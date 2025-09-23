@@ -1,7 +1,7 @@
 import User from "../models/userModel.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-
+import { geocodeAddress } from "../utils/geocode.js";
 // ================= REGISTER =================
 export const register = async (req, res) => {
   try {
@@ -15,6 +15,16 @@ export const register = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+   let geoData = null;
+    if (role === "mechanic" && address) {
+      try {
+        geoData = await geocodeAddress(address);
+      } catch (err) {
+       
+console.log("OpenCage response:", JSON.stringify(res.data, null, 2));
+        return res.status(400).json({ message: "Địa chỉ không hợp lệ" });
+      }
+    }
 
     const newUser = new User({
       name,
@@ -22,7 +32,17 @@ export const register = async (req, res) => {
       phone,
       password: hashedPassword,
       role,
-      ...(role === "mechanic" && { address, experience, skills, workingHours }),
+      ...(role === "mechanic" && {
+        rawAddress: address,
+        address: geoData.formatted_address,
+        experience,
+        skills,
+        workingHours,
+        location: {
+          type: "Point",
+          coordinates: [geoData.location.lng, geoData.location.lat],
+        },
+      }),
     });
 
     await newUser.save();

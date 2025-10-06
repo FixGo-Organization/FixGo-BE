@@ -1,0 +1,140 @@
+{
+  "info": {
+    "name": "FixGo-BE - Full API Tests",
+    "_postman_id": "fixgo-full-collection",
+    "description": "Collection to test auth, services, bookings, ratings, users endpoints (use http://localhost:5000)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth - Register (customer)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"KhachHang1\",\n  \"email\": \"cust1@example.com\",\n  \"phone\": \"0909000001\",\n  \"password\": \"password123\",\n  \"role\": \"customer\"\n}"
+        },
+        "url": { "raw": "http://localhost:5000/api/auth/register", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "auth", "register"] }
+      }
+    },
+    {
+      "name": "Auth - Register (mechanic)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"ThoSua1\",\n  \"email\": \"mech1@example.com\",\n  \"phone\": \"0911000001\",\n  \"password\": \"password123\",\n  \"role\": \"mechanic\",\n  \"address\": \"Ho Chi Minh City\"\n}"
+        },
+        "url": { "raw": "http://localhost:5000/api/auth/register", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "auth", "register"] }
+      }
+    },
+    {
+      "name": "Auth - Login",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"cust1@example.com\",\n  \"password\": \"password123\"\n}"
+        },
+        "url": { "raw": "http://localhost:5000/api/auth/login", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "auth", "login"] }
+      }
+    },
+    {
+      "name": "Auth - Check Phone",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "http://localhost:5000/api/auth/check-phone?phone=0909000001", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "auth", "check-phone"], "query": [{ "key": "phone", "value": "0909000001" }] }
+      }
+    },
+    {
+      "name": "Auth - Reset Password",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"phone\": \"0909000001\",\n  \"newPassword\": \"newpass123\"\n}" },
+        "url": { "raw": "http://localhost:5000/api/auth/reset-password", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "auth", "reset-password"] }
+      }
+    },
+    {
+      "name": "Services - Create",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Thay nhớt\",\n  \"description\": \"Thay nhớt xe máy\",\n  \"defaultPrice\": 120000\n}" },
+        "url": { "raw": "http://localhost:5000/api/services/create", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "services", "create"] }
+      }
+    },
+    {
+      "name": "Services - Update",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"serviceId\": \"<service_id>\",\n  \"name\": \"Thay nhớt xe ô tô\",\n  \"defaultPrice\": 250000\n}" },
+        "url": { "raw": "http://localhost:5000/api/services/update", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "services", "update"] }
+      }
+    },
+    {
+      "name": "Services - Get All",
+      "request": { "method": "GET", "url": { "raw": "http://localhost:5000/api/services/", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "services", ""] } }
+    },
+    {
+      "name": "Bookings - Create",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user\": \"<user_id>\",\n  \"location\": { \"type\": \"Point\", \"coordinates\": [106.698, 10.777] },\n  \"vehicleType\": \"xe máy\",\n  \"issueType\": \"xịt lốp\",\n  \"note\": \"Gần cổng trường\"\n}"
+        },
+        "url": { "raw": "http://localhost:5000/api/bookings/create", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "bookings", "create"] }
+      }
+    },
+    {
+      "name": "Bookings - Mechanics Nearby",
+      "request": { "method": "GET", "url": { "raw": "http://localhost:5000/api/bookings/mechanics?lat=10.777&lng=106.698&distance=5", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "bookings", "mechanics"], "query": [{ "key": "lat", "value": "10.777" }, { "key": "lng", "value": "106.698" }, { "key": "distance", "value": "5" }] } }
+    },
+    {
+      "name": "Bookings - Assign Mechanic",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"bookingId\": \"<booking_id>\",\n  \"mechanicId\": \"<mechanic_user_id>\"\n}" }, "url": { "raw": "http://localhost:5000/api/bookings/assign", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "bookings", "assign"] } }
+    },
+    {
+      "name": "Bookings - Update Status",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"bookingId\": \"<booking_id>\",\n  \"status\": \"đang sửa\"\n}" }, "url": { "raw": "http://localhost:5000/api/bookings/status", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "bookings", "status"] } }
+    },
+    {
+      "name": "Bookings - Get All",
+      "request": { "method": "GET", "url": { "raw": "http://localhost:5000/api/bookings/all", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "bookings", "all"] } }
+    },
+    {
+      "name": "Ratings - Create",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"rater\": \"<user_id>\",\n  \"mechanic\": \"<mechanic_user_id>\",\n  \"booking\": \"<booking_id>\",\n  \"score\": 5,\n  \"comment\": \"Làm nhanh, nhiệt tình\"\n}" }, "url": { "raw": "http://localhost:5000/api/ratings/create", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "ratings", "create"] } }
+    },
+    {
+      "name": "Ratings - By Mechanic",
+      "request": { "method": "GET", "url": { "raw": "http://localhost:5000/api/ratings/mechanic/<mechanic_id>", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "ratings", "mechanic", "<mechanic_id>"] } }
+    },
+    {
+      "name": "Ratings - Mechanic Stats",
+      "request": { "method": "GET", "url": { "raw": "http://localhost:5000/api/ratings/mechanic/<mechanic_id>/stats", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "ratings", "mechanic", "<mechanic_id>", "stats"] } }
+    },
+    {
+      "name": "Ratings - By Booking",
+      "request": { "method": "GET", "url": { "raw": "http://localhost:5000/api/ratings/booking/<booking_id>", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "ratings", "booking", "<booking_id>"] } }
+    },
+    {
+      "name": "Ratings - Get All",
+      "request": { "method": "GET", "url": { "raw": "http://localhost:5000/api/ratings/all", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "ratings", "all"] } }
+    },
+    {
+      "name": "Users - Get All",
+      "request": { "method": "GET", "url": { "raw": "http://localhost:5000/api/users/all", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users", "all"] } }
+    },
+    {
+      "name": "Users - Get By Id",
+      "request": { "method": "GET", "url": { "raw": "http://localhost:5000/api/users/<user_id>", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users", "<user_id>"] } }
+    }
+  ]
+}

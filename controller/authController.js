@@ -6,7 +6,7 @@ const { geocodeAddress } = require('../utils/geocode');
 // ================= REGISTER =================
 exports.register = async (req, res) => {
   try {
-    const { name, email, phone, password, role, address, experience, skills, workingHours } =
+    const { name, email, phone, password, role, address, experience, skills, workingHours,birthday } =
       req.body;
 
     const exist = await User.findOne({ email });
@@ -30,7 +30,8 @@ exports.register = async (req, res) => {
       phone,
       password: hashedPassword,
       role,
-      ...(role === 'mechanic' && {
+         birthday: birthday ? new Date(birthday) : undefined,
+      ...(role === "mechanic" && {
         rawAddress: address,
         address: geoData.formatted_address,
         experience,
@@ -55,18 +56,22 @@ exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // Tìm user theo email
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: 'Email không tồn tại!' });
+    if (!user) return res.status(400).json({ message: "Email không tồn tại!" });
 
+    // So sánh mật khẩu
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: 'Sai mật khẩu!' });
+    if (!isMatch) return res.status(400).json({ message: "Sai mật khẩu!" });
 
+    // Tạo JWT token
     const token = jwt.sign(
       { id: user._id, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: '1d' }
     );
 
+    // Trả về đầy đủ field
     res.json({
       message: 'Đăng nhập thành công!',
       token,
@@ -74,8 +79,12 @@ exports.login = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
+        phone: user.phone || "",       
+        birthday: user.birthday || "",  
+        language: user.language || "Việt Nam", 
         role: user.role,
-        avatar: user.avatar,
+        avatar: user.avatar || "",
+        rating: user.rating || 0,        
       },
     });
   } catch (err) {

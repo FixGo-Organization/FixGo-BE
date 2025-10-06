@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true, minlength: 3 },
+    name: { type: String, required: true, minlength: 3 }, 
     email: { type: String, required: true, unique: true },
     phone: { type: String, required: true },
     password: { type: String, required: true },
@@ -12,6 +12,8 @@ const userSchema = new mongoose.Schema(
       default: "customer" 
     },
     avatar: { type: String, default: "" },
+    birthday: { type: Date },
+    language: { type: String, default: "Việt Nam" },
     rawAddress: { type: String },
     address: { type: String },
     location: {

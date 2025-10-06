@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const bookingSchema = new mongoose.Schema(
     {
         customerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-        mechanicId: { type: mongoose.Schema.Types.ObjectId, ref: "Mechanic" },
+        mechanicId: { type: mongoose.Schema.Types.ObjectId, required: true }, // mechanics are stored in User
         garageId: { type: mongoose.Schema.Types.ObjectId, ref: "Garage" },
         serviceId: { type: mongoose.Schema.Types.ObjectId, ref: "Service" },
         location: {
@@ -20,5 +20,7 @@ const bookingSchema = new mongoose.Schema(
     },
     { timestamps: true }
 );
+
+bookingSchema.index({ location: "2dsphere" });
 
 module.exports = mongoose.models.Booking || mongoose.model("Booking", bookingSchema);

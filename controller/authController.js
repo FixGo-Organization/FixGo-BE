@@ -1,4 +1,5 @@
 const User = require('../models/userModel');
+const Mechanic = require('../models/mechanicModel');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { geocodeAddress } = require('../utils/geocode');
@@ -6,7 +7,7 @@ const { geocodeAddress } = require('../utils/geocode');
 // ================= REGISTER =================
 exports.register = async (req, res) => {
   try {
-    const { name, email, phone, password, role, address, experience, skills, workingHours,birthday } =
+    const { name, email, phone, password, role, address, experience, skills, workingHours, birthday } =
       req.body;
 
     const exist = await User.findOne({ email });
@@ -30,7 +31,7 @@ exports.register = async (req, res) => {
       phone,
       password: hashedPassword,
       role,
-         birthday: birthday ? new Date(birthday) : undefined,
+      birthday: birthday ? new Date(birthday) : undefined,
       ...(role === "mechanic" && {
         rawAddress: address,
         address: geoData.formatted_address,
@@ -45,6 +46,17 @@ exports.register = async (req, res) => {
     });
 
     await newUser.save();
+
+    // create mechanic record if user is a mechanic
+    if (role === "mechanic") {
+      await Mechanic.create({
+        userId: newUser._id,
+        skills: skills || [],
+        experienceYears: experience || 0,
+        availability: true,
+      });
+    }
+
     res.status(201).json({ message: 'Đăng ký thành công!', user: newUser });
   } catch (err) {
     res.status(500).json({ message: err.message || 'Server error' });
@@ -79,12 +91,12 @@ exports.login = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        phone: user.phone || "",       
-        birthday: user.birthday || "",  
-        language: user.language || "Việt Nam", 
+        phone: user.phone || "",
+        birthday: user.birthday || "",
+        language: user.language || "Việt Nam",
         role: user.role,
         avatar: user.avatar || "",
-        rating: user.rating || 0,        
+        rating: user.rating || 0,
       },
     });
   } catch (err) {

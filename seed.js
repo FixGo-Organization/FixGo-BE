@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 // Load models. userModel may be ES module (export default) or CommonJS. Handle both.
 let User;
 const Service = require('./models/serviceModel');
-const ServiceBooking = require('./models/serviceBookingModel');
+const ServiceBooking = require('./models/bookingModel');
 const Rating = require('./models/ratingModel');
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/FixGo';

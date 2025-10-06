@@ -2,15 +2,16 @@ const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true, minlength: 3 }, 
+    name: { type: String, required: true, minlength: 3 },
     email: { type: String, required: true, unique: true },
     phone: { type: String, required: true },
     password: { type: String, required: true },
-    role: { 
-      type: String, 
-      enum: ["customer", "mechanic", "garageOwner", "garageEmployee", "admin"], 
-      default: "customer" 
+    role: {
+      type: String,
+      enum: ["customer", "mechanic", "garageOwner", "garageEmployee", "admin"],
+      default: "customer"
     },
+    online: { type: Boolean, default: false }, // online socket presence
     avatar: { type: String, default: "" },
     birthday: { type: Date },
     language: { type: String, default: "Việt Nam" },

@@ -1,6 +1,7 @@
 const Rating = require('../models/ratingModel');
 const User = require('../models/userModel.js');
-
+const Booking = require("../models/bookingModel.js");
+const Feedback = require("../models/feedbackModel.js");
 // Create a rating
 exports.createRating = async (req, res) => {
   try {
@@ -69,5 +70,45 @@ exports.getRatingsByBooking = async (req, res) => {
     res.json(ratings);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+};
+
+exports.addFeedback = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { comment, rating } = req.body; 
+const userId = req.user?._id || "68e3fa0f6bb3789130e137b3"; 
+
+
+    if (!bookingId || !userId || !rating) {
+      return res.status(400).json({ message: "Thiếu dữ liệu bắt buộc" });
+    }
+
+    const booking = await Booking.findById(bookingId);
+    if (!booking) return res.status(404).json({ message: "Đơn hàng không tồn tại" });
+
+   
+    if (booking.customerId.toString() !== userId.toString()) {
+      return res.status(403).json({ message: "Bạn không được phép gửi feedback cho booking này" });
+    }
+
+    const existingFeedback = await Feedback.findOne({ bookingId });
+    if (existingFeedback) {
+      return res.status(400).json({ message: "Đơn hàng này đã được đánh giá" });
+    }
+
+    const feedback = await Feedback.create({
+      bookingId,
+      userId,
+      mechanicId: booking.mechanicId,
+      garageId: booking.garageId,
+      rating,
+      comment,
+    });
+
+    return res.status(200).json({ message: "Gửi feedback thành công", feedback });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Lỗi server" });
   }
 };

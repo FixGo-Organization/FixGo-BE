@@ -77,3 +77,144 @@ exports.getAllBookings = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+exports.getBookings = async (req, res) => {
+  try {
+    const { role, userId, page = 1, limit = 10, status, search } = req.query;
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+
+    let filter = {}; // <-- bỏ :any
+
+    // filter theo role
+    if (role === "customer") filter.customerId = userId;
+    if (role === "mechanic") filter.mechanicId = userId;
+
+    // filter theo status nếu có
+    if (status) {
+      filter.status = status;
+    }
+
+    // filter theo search (tìm theo tên, email, phone, address)
+    if (search) {
+      const searchRegex = new RegExp(search, "i"); // i = ignore case
+      filter.$or = [
+        { "customerId.name": searchRegex },
+        { "customerId.email": searchRegex },
+        { "customerId.phone": searchRegex },
+        { "customerId.address": searchRegex },
+      ];
+    }
+
+    const bookings = await ServiceBooking.find(filter)
+      .populate("customerId", "name email phone avatar address")
+      .populate("mechanicId", "name email phone")
+      .sort({ createdAt: -1 })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum);
+
+    const mapped = bookings.map((b) => ({
+      id: b._id,
+      customer: b.customerId?.name || "Ẩn danh",
+      date: b.createdAt.toLocaleString("vi-VN"),
+      email: b.customerId?.email || "",
+      phone: b.customerId?.phone || "",
+      address: b.customerId?.address || "",
+      status: mapStatus(b.status),
+      image:
+        b.customerId?.avatar ||
+        "https://randomuser.me/api/portraits/men/85.jpg",
+    }));
+
+    const total = await ServiceBooking.countDocuments(filter);
+
+    res.json({
+      data: mapped,
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+
+exports.updateBookingStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const validStatuses = ["Chờ xác nhận", "Đang xử lý", "Hoàn thành", "Từ chối"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: "Trạng thái không hợp lệ" });
+    }
+
+    const booking = await ServiceBooking.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true }
+    );
+
+    if (!booking) {
+      return res.status(404).json({ error: "Booking không tồn tại" });
+    }
+
+    res.json({ message: "Cập nhật thành công", booking });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// // Thợ gửi feedback / rating cho khách
+// exports.submitFeedback = async (req, res) => {
+//   try {
+//     const { bookingId, mechanicId, score, comment } = req.body;
+
+//     const booking = await ServiceBooking.findById(bookingId).populate("customerId");
+
+//     if (!booking) return res.status(404).json({ message: "Booking không tồn tại" });
+//     if (booking.mechanicId.toString() !== mechanicId) {
+//       return res.status(403).json({ message: "Bạn không phải thợ của booking này" });
+//     }
+
+//     // Tạo rating
+//     const rating = new Rating({
+//       rater: mechanicId,
+//       mechanic: booking.mechanicId,
+//       booking: bookingId,
+//       score,
+//       comment,
+//     });
+//     await rating.save();
+
+//     // Tạo feedback cho khách hàng
+//     const feedback = new feedback({
+//       bookingId,
+//       userId: booking.customerId._id,
+//       mechanicId,
+//       rating: score,
+//       comment,
+//     });
+//     await feedback.save();
+
+//     res.status(201).json({ message: "Feedback & Rating đã gửi", rating, feedback });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// };
+function mapStatus(status) {
+  switch (status) {
+    case "pending":
+      return "Chờ xác nhận";
+    case "accepted":
+      return "Đang xử lý";
+    case "completed":
+      return "Hoàn thành";
+    case "rejected":
+      return "Từ chối";
+    default:
+      return status;
+}};

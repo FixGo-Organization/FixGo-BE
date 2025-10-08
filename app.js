@@ -1,8 +1,8 @@
 const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const http = require('http');
+const socketIo = require('socket.io');
 require('dotenv').config();
 
 const authRoutes = require('./routes/authRoutes');
@@ -16,50 +16,67 @@ const transactionRoutes = require('./routes/transactionRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 
 const app = express();
+const server = http.createServer(app);
 
-// middleware
+// Socket.IO setup
+const io = socketIo(server, {
+  cors: {
+    origin: [
+      process.env.CLIENT_URL,
+      process.env.EXPO_CLIENT_URL,
+      "http://192.168.106.184:8081",
+      "http://localhost:3000"
+    ],
+    methods: ["GET", "POST"],
+    credentials: true
+  }
+});
+
+// Store socket connections: { userId: socketId }
+const socketUserMap = {};
+
+// Socket.IO connection handling
+io.on('connection', (socket) => {
+  console.log('User connected:', socket.id);
+
+  // User registers their ID
+  socket.on('register', (userId) => {
+    socketUserMap[userId] = socket.id;
+    console.log(`User ${userId} registered with socket ${socket.id}`);
+  });
+
+  // Handle disconnection
+  socket.on('disconnect', () => {
+    // Remove user from socketUserMap
+    for (const [userId, socketId] of Object.entries(socketUserMap)) {
+      if (socketId === socket.id) {
+        delete socketUserMap[userId];
+        console.log(`User ${userId} disconnected`);
+        break;
+      }
+    }
+  });
+});
+
+// Make io and socketUserMap available to routes
+app.set('io', io);
+app.set('socketUserMap', socketUserMap);
+
+// Middleware
 app.use(
   cors({
-    origin: true,
+    origin: [
+      process.env.CLIENT_URL,
+      process.env.EXPO_CLIENT_URL,
+      "http://192.168.106.184:8081",
+      "http://localhost:3000"
+    ],
     credentials: true,
   })
 );
 app.use(express.json());
 
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: true, methods: ["GET", "POST"] },
-});
-
-// store io and a simple map
-const socketUserMap = {}; // { userId: socketId } - ephemeral
-app.set('io', io);
-app.set('socketUserMap', socketUserMap);
-
-// socket handlers
-io.on('connection', (socket) => {
-  console.log('socket connected', socket.id);
-
-  // client should emit 'register' with current userId after connect
-  socket.on('register', (userId) => {
-    if (!userId) return;
-    socketUserMap[userId] = socket.id;
-    console.log('registered', userId, socket.id);
-  });
-
-  socket.on('disconnect', () => {
-    // remove mapping
-    for (const [userId, sId] of Object.entries(socketUserMap)) {
-      if (sId === socket.id) {
-        delete socketUserMap[userId];
-        break;
-      }
-    }
-    console.log('socket disconnected', socket.id);
-  });
-});
-
-// routes
+// Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/bookings', serviceBookingRoutes);
@@ -70,13 +87,15 @@ app.use('/api/memberships', membershipRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/chats', chatRoutes);
 
-// connect DB
+// Connect to MongoDB and start the server
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
     console.log('✔ MongoDB connected');
     const PORT = process.env.PORT || 5000;
-    server.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+    server.listen(PORT, () => {
+      console.log(`Server running on http://192.168.106.184:${PORT}`);
+      console.log(`Socket.IO ready for connections`);
+    });
   })
   .catch((err) => console.error('✖ DB Error:', err));
-

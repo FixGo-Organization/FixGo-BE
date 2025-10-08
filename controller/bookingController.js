@@ -9,7 +9,6 @@ const getIoAndMap = (req) => {
   return { io, socketUserMap };
 };
 
-
 // Tạo yêu cầu sửa xe và thông báo cho thợ gần đó
 exports.createBooking = async (req, res) => {
   try {
@@ -62,14 +61,15 @@ exports.createBooking = async (req, res) => {
 
     res.status(201).json(booking);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    console.error("❌ Error creating booking:", err.response?.data || err.message);
+    res.status(500).json({ error: err.message });
   }
 };
 
 // Lấy danh sách thợ gần đó
 exports.getNearbyMechanics = async (req, res) => {
   try {
-    const { lat, lng, distance = 5 } = req.query;
+    const { lat, lng, distance = 20 } = req.query;
     if (!lat || !lng) return res.status(400).json({ error: 'lat and lng are required' });
     const latNum = parseFloat(lat);
     const lngNum = parseFloat(lng);
@@ -162,10 +162,109 @@ exports.assignMechanic = async (req, res) => {
   }
 };
 
+// customer directly requests a chosen mechanic
+exports.requestSpecificMechanic = async (req, res) => {
+  try {
+    const { bookingId, mechanicId } = req.body;
+    if (!bookingId || !mechanicId)
+      return res.status(400).json({ error: 'bookingId and mechanicId required' });
+
+    const booking = await ServiceBooking.findById(bookingId);
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+    // attach temporarily for reference
+    booking.preferredMechanicId = mechanicId;
+    await booking.save();
+
+    // notify that mechanic
+    const io = req.app.get('io');
+    const socketUserMap = req.app.get('socketUserMap');
+    if (io && socketUserMap) {
+      const mechSocket = socketUserMap[mechanicId];
+      if (mechSocket)
+        io.to(mechSocket).emit('direct_booking_request', { booking });
+    }
+
+    res.json({ message: 'Booking sent to chosen mechanic', booking });
+  } catch (err) {
+    console.error('Error requesting specific mechanic:', err);
+    res.status(400).json({ error: err.message });
+  }
+};
+
+
+// customer rejects mechanic offer
+exports.rejectMechanic = async (req, res) => {
+  try {
+    const { bookingId, mechanicId } = req.body;
+    if (!bookingId || !mechanicId)
+      return res.status(400).json({ error: 'bookingId and mechanicId required' });
+
+    const booking = await ServiceBooking.findById(bookingId);
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+    // reset mechanic
+    booking.mechanicId = null;
+    booking.status = 'chờ thợ';
+    await booking.save();
+
+    // set mechanic available again
+    await Mechanic.findOneAndUpdate({ userId: mechanicId }, { availability: true });
+
+    // notify both sides
+    const io = req.app.get('io');
+    const socketUserMap = req.app.get('socketUserMap');
+    if (io && socketUserMap) {
+      const mechSocket = socketUserMap[mechanicId];
+      const custSocket = socketUserMap[booking.customerId.toString()];
+      if (mechSocket)
+        io.to(mechSocket).emit('booking_rejected_by_customer', { bookingId });
+      if (custSocket)
+        io.to(custSocket).emit('booking_rejection_confirmed', { bookingId });
+    }
+
+    res.json({ message: 'Mechanic rejected successfully, booking reopened.' });
+  } catch (err) {
+    console.error('Error rejecting mechanic:', err);
+    res.status(400).json({ error: err.message });
+  }
+};
+
+// mechanic rejects booking
+exports.mechanicRejectBooking = async (req, res) => {
+  try {
+    const { bookingId, mechanicId } = req.body;
+    if (!bookingId || !mechanicId)
+      return res.status(400).json({ error: 'bookingId and mechanicId required' });
+
+    const booking = await ServiceBooking.findById(bookingId);
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+    // ensure status is still waiting
+    if (booking.status !== 'chờ thợ')
+      return res.status(400).json({ error: 'Cannot reject. Booking not waiting for mechanic.' });
+
+    const io = req.app.get('io');
+    const socketUserMap = req.app.get('socketUserMap');
+    if (io && socketUserMap) {
+      const custSocket = socketUserMap[booking.customerId.toString()];
+      if (custSocket)
+        io.to(custSocket).emit('booking_rejected_by_mechanic', { bookingId, mechanicId });
+    }
+
+    res.json({ message: 'Mechanic rejected booking successfully' });
+  } catch (err) {
+    console.error('Error mechanic rejecting booking:', err);
+    res.status(400).json({ error: err.message });
+  }
+};
+
 // Cập nhật trạng thái đơn
 exports.updateStatus = async (req, res) => {
   try {
     const { bookingId, status } = req.body;
+    console.log('🔹 Updating booking status:', { bookingId, status });
+    
     if (!bookingId || !status) return res.status(400).json({ error: 'bookingId and status required' });
 
     // 1. fetch booking
@@ -173,6 +272,8 @@ exports.updateStatus = async (req, res) => {
     if (!booking) {
       return res.status(404).json({ error: 'Booking not found' });
     }
+
+    console.log('🔹 Current booking status:', booking.status, '-> New status:', status);
 
     // 2. prevent further changes if status == 'hoàn thành'/'hủy'
     if (['hoàn thành', 'hủy'].includes(booking.status)) {
@@ -193,22 +294,36 @@ exports.updateStatus = async (req, res) => {
     ).populate('customerId mechanicId');
 
     // 5. if status == "hoàn thành" => set mechanic available true
-    let updatedMechanic = false;
-    if (status === 'hoàn thành' && (updatedBooking.mechanicId || req.body.mechanicId)) {
-      const mechId = updatedBooking.mechanicId?._id || req.body.mechanicId;
+    let updatedMechanic = null;
+    if (status === 'hoàn thành' && updatedBooking.mechanicId) {
+      const mechanicUserId = typeof updatedBooking.mechanicId === 'object' 
+        ? updatedBooking.mechanicId._id 
+        : updatedBooking.mechanicId;
+      
       updatedMechanic = await Mechanic.findOneAndUpdate(
-        { userId: updatedBooking.mechanicId._id },
+        { userId: mechanicUserId },
         { availability: true },
         { new: true } // ensure to return updated data
       );
+      
+      console.log('🔹 Updated mechanic availability to true for mechanic:', mechanicUserId);
     }
 
     // 6. emit live update to both customer and mechanic
     const io = req.app.get('io');
     const socketUserMap = req.app.get('socketUserMap');
+
+    console.log("🔹 socketUserMap:", socketUserMap);
+    console.log("🔹 Customer socket ID:", updatedBooking.customerId._id.toString(), "=>", socketUserMap[updatedBooking.customerId._id.toString()]);
+
     if (io && socketUserMap) {
       const custSocket = socketUserMap[updatedBooking.customerId._id.toString()];
       const mechSocket = updatedBooking.mechanicId ? socketUserMap[updatedBooking.mechanicId._id.toString()] : null;
+
+      console.log("🔹 Emitting booking_status_updated to customer socket:", custSocket);
+      console.log("🔹 Emitting booking_status_updated to mechanic socket:", mechSocket);
+      console.log("🔹 Updated booking status:", updatedBooking.status);
+
       if (custSocket) io.to(custSocket).emit('booking_status_updated', { booking: updatedBooking });
       if (mechSocket) io.to(mechSocket).emit('booking_status_updated', { booking: updatedBooking });
     }
@@ -216,7 +331,7 @@ exports.updateStatus = async (req, res) => {
     // 7. respond with updated booking + mechanic availability
     res.json({
       booking: updatedBooking,
-      mechanic: updatedMechanic || null
+      availability: updatedMechanic?.availability ?? null
     });
 
   } catch (err) {
@@ -233,6 +348,88 @@ exports.getAllBookings = async (req, res) => {
       .populate('serviceId', 'name price');
     res.json(bookings);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// Get bookings for a specific mechanic with distance calculations
+exports.getMechanicBookings = async (req, res) => {
+  try {
+    const mechanicId = req.params.mechanicId || req.userId; // from auth middleware or params
+    if (!mechanicId) {
+      return res.status(400).json({ error: 'Mechanic ID is required' });
+    }
+
+    // Get mechanic's location for distance calculation
+    const mechanic = await User.findById(mechanicId).select('location');
+    if (!mechanic || !mechanic.location) {
+      return res.status(404).json({ error: 'Mechanic not found or location not set' });
+    }
+
+    const mechanicCoords = mechanic.location.coordinates; // [lng, lat]
+
+    // Fetch bookings for this mechanic or nearby pending bookings
+    const bookings = await ServiceBooking.find({
+      $or: [
+        { mechanicId: mechanicId }, // bookings assigned to this mechanic
+        { status: 'chờ thợ' } // pending bookings that can be picked up
+      ]
+    })
+    .populate('customerId', 'name phone email avatar')
+    .populate('mechanicId', 'name phone')
+    .populate('serviceId', 'name price')
+    .sort({ createdAt: -1 });
+
+    // Calculate distances and format response
+    const bookingsWithDistance = bookings.map(booking => {
+      let distance = null;
+      
+      if (booking.location && booking.location.coordinates) {
+        const customerCoords = booking.location.coordinates; // [lng, lat]
+        
+        // Calculate distance using Haversine formula
+        const R = 6371; // Earth's radius in kilometers
+        const dLat = (customerCoords[1] - mechanicCoords[1]) * Math.PI / 180;
+        const dLon = (customerCoords[0] - mechanicCoords[0]) * Math.PI / 180;
+        const a = 
+          Math.sin(dLat/2) * Math.sin(dLat/2) +
+          Math.cos(mechanicCoords[1] * Math.PI / 180) * Math.cos(customerCoords[1] * Math.PI / 180) * 
+          Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        distance = (R * c).toFixed(2); // Distance in km
+      }
+
+      return {
+        id: booking._id,
+        customer: booking.customerId?.name || 'Unknown',
+        email: booking.customerId?.email || '',
+        phone: booking.customerId?.phone || '',
+        avatar: booking.customerId?.avatar || 'https://randomuser.me/api/portraits/men/85.jpg',
+        address: booking.location?.address || 'Address not provided',
+        coordinates: booking.location?.coordinates || null,
+        status: booking.status,
+        description: booking.description || '',
+        service: booking.serviceId?.name || 'Emergency Service',
+        price: booking.serviceId?.price || 0,
+        distance: distance ? `${distance} km` : 'Unknown',
+        distanceKm: distance ? parseFloat(distance) : null,
+        createdAt: booking.createdAt,
+        updatedAt: booking.updatedAt,
+        completedAt: booking.completedAt
+      };
+    });
+
+    // Sort by distance (closest first) for pending bookings, or by date for assigned bookings
+    const sortedBookings = bookingsWithDistance.sort((a, b) => {
+      if (a.status === 'chờ thợ' && b.status === 'chờ thợ') {
+        return (a.distanceKm || 999) - (b.distanceKm || 999); // closest first
+      }
+      return new Date(b.createdAt) - new Date(a.createdAt); // newest first
+    });
+
+    res.json(sortedBookings);
+  } catch (err) {
+    console.error('Error fetching mechanic bookings:', err);
     res.status(500).json({ error: err.message });
   }
 };

@@ -25,4 +25,6 @@ router.get('/all', async (req, res) => {
 	}
 });
 
+router.post("/:bookingId/feedback", ratingController.addFeedback);
+
 module.exports = router;

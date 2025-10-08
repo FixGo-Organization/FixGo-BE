@@ -13,4 +13,8 @@ router.post('/status', serviceBookingController.updateStatus);
 router.get('/all', serviceBookingController.getAllBookings);
 router.get('/mechanic/:mechanicId', serviceBookingController.getMechanicBookings);
 
+router.get("/bookings",serviceBookingController.getBookings);
+router.patch("/:id/status", serviceBookingController.updateBookingStatus);
+// router.post("/feedback", serviceBookingController.submitFeedback);
+
 module.exports = router;

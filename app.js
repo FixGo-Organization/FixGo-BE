@@ -12,7 +12,7 @@ const garageRoutes = require('./routes/garageRoutes');
 const membershipRoutes = require('./routes/membershipRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
 const chatRoutes = require('./routes/chatRoutes');
-
+const profileRoutes = require('./routes/profileRoutes')
 const app = express();
 
 // middleware
@@ -34,7 +34,7 @@ app.use('/api/garages', garageRoutes);
 app.use('/api/memberships', membershipRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/chats', chatRoutes);
-
+app.use('/api/profile',profileRoutes)
 // connect DB
 mongoose
   .connect(process.env.MONGO_URI)

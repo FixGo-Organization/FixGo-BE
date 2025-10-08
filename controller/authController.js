@@ -1,56 +1,69 @@
 const User = require('../models/userModel');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const Mechanic = require('../models/mechanicModel')
 const { geocodeAddress } = require('../utils/geocode');
 
 // ================= REGISTER =================
 exports.register = async (req, res) => {
   try {
-    const { name, email, phone, password, role, address, experience, skills, workingHours,birthday } =
-      req.body;
+    const { name, email, phone, password, role, address, experience, skills, birthday } = req.body;
 
+    // Kiểm tra email đã tồn tại
     const exist = await User.findOne({ email });
-    if (exist) return res.status(400).json({ message: 'Email đã tồn tại!' });
+    if (exist) return res.status(400).json({ message: "Email đã tồn tại!" });
 
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    let geoData = null;
-    if (role === 'mechanic' && address) {
-      try {
-        geoData = await geocodeAddress(address);
-      } catch (err) {
-        console.error('Geocode error:', err && err.message ? err.message : err);
-        return res.status(400).json({ message: 'Địa chỉ không hợp lệ' });
-      }
-    }
-
+    // Tạo User
     const newUser = new User({
       name,
       email,
       phone,
       password: hashedPassword,
       role,
-         birthday: birthday ? new Date(birthday) : undefined,
-      ...(role === "mechanic" && {
-        rawAddress: address,
-        address: geoData.formatted_address,
-        experience,
-        skills,
-        workingHours,
-        location: {
-          type: 'Point',
-          coordinates: [geoData.location.lng, geoData.location.lat],
-        },
-      }),
+      birthday: birthday ? new Date(birthday) : undefined,
+      ...(address && { rawAddress: address }), 
     });
 
+    // Nếu là mechanic, lấy geo và tạo document Mechanic
+    if (role === "mechanic") {
+      if (!address) return res.status(400).json({ message: "Cần địa chỉ để đăng ký thợ" });
+
+      let geoData;
+      try {
+        geoData = await geocodeAddress(address); 
+      } catch (err) {
+        console.error("Geocode error:", err?.message || err);
+        return res.status(400).json({ message: "Địa chỉ không hợp lệ" });
+      }
+
+      newUser.address = geoData.formatted_address;
+      newUser.location = {
+        type: "Point",
+        coordinates: [geoData.location.lng, geoData.location.lat],
+      };
+    }
+
     await newUser.save();
-    res.status(201).json({ message: 'Đăng ký thành công!', user: newUser });
+
+    // Nếu là mechanic, tạo Mechanic document
+    if (role === "mechanic") {
+      const newMechanic = new Mechanic({
+        userId: newUser._id,
+        skills: skills || [],
+        experienceYears: experience || 0,
+      });
+      await newMechanic.save();
+    }
+
+    res.status(201).json({ message: "Đăng ký thành công!", user: newUser });
   } catch (err) {
-    res.status(500).json({ message: err.message || 'Server error' });
+    console.error(err);
+    res.status(500).json({ message: err.message || "Server error" });
   }
 };
-
 // ================= LOGIN =================
 exports.login = async (req, res) => {
   try {

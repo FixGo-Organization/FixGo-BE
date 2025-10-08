@@ -4,6 +4,8 @@ const cors = require('cors');
 require('dotenv').config();
 
 const authRoutes = require('./routes/authRoutes');
+const mechanicRoutes = require('./routes/mechanicRoutes');
+const customerRoutes = require('./routes/customerRoutes');
 const serviceRoutes = require('./routes/serviceRoutes');
 const serviceBookingRoutes = require('./routes/serviceBookingRoutes');
 const ratingRoutes = require('./routes/ratingRoutes');
@@ -26,6 +28,8 @@ app.use(express.json());
 
 // routes
 app.use('/api/auth', authRoutes);
+app.use('/api/mechanics', mechanicRoutes);
+app.use('/api/customers', customerRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/bookings', serviceBookingRoutes);
 app.use('/api/ratings', ratingRoutes);
@@ -41,6 +45,7 @@ mongoose
   .then(() => {
     console.log('✔ MongoDB connected');
     const PORT = process.env.PORT || 5000;
-    app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+    const IP = '0.0.0.0';
+    app.listen(PORT, IP, () => console.log(`Server running on http://${IP}:${PORT}`));
   })
   .catch((err) => console.error('✖ DB Error:', err));

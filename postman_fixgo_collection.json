@@ -117,8 +117,12 @@
       "request": { "method": "GET", "url": { "raw": "http://localhost:5000/api/ratings/mechanic/<mechanic_id>", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "ratings", "mechanic", "<mechanic_id>"] } }
     },
     {
-      "name": "Ratings - Mechanic Stats",
+
+
+      "name": "Ratings - Mechanic Stats", 
       "request": { "method": "GET", "url": { "raw": "http://localhost:5000/api/ratings/mechanic/<mechanic_id>/stats", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "ratings", "mechanic", "<mechanic_id>", "stats"] } }
+    
+    
     },
     {
       "name": "Ratings - By Booking",

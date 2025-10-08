@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const mechanicSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
@@ -5,7 +6,7 @@ const mechanicSchema = new mongoose.Schema(
     experienceYears: { type: Number, default: 0 },
     licenseNumber: { type: String },
     ratingAverage: { type: Number, default: 0 },
-    availability: { type: Boolean, default: true },
+    availability: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

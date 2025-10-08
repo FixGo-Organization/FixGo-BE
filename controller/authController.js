@@ -1,4 +1,6 @@
+
 const User = require('../models/userModel');
+const Mechanic = require('../models/mechanicModel');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { geocodeAddress } = require('../utils/geocode');
@@ -6,8 +8,10 @@ const { geocodeAddress } = require('../utils/geocode');
 // ================= REGISTER =================
 exports.register = async (req, res) => {
   try {
-    const { name, email, phone, password, role, address, experience, skills, workingHours,birthday } =
-      req.body;
+    const { 
+      name, email, phone, password, role, address, 
+      experience, skills, workingHours, birthday 
+    } = req.body;
 
     const exist = await User.findOne({ email });
     if (exist) return res.status(400).json({ message: 'Email đã tồn tại!' });
@@ -19,24 +23,22 @@ exports.register = async (req, res) => {
       try {
         geoData = await geocodeAddress(address);
       } catch (err) {
-        console.error('Geocode error:', err && err.message ? err.message : err);
+        console.error('Geocode error:', err?.message || err);
         return res.status(400).json({ message: 'Địa chỉ không hợp lệ' });
       }
     }
 
+    // Tạo user
     const newUser = new User({
       name,
       email,
       phone,
       password: hashedPassword,
       role,
-         birthday: birthday ? new Date(birthday) : undefined,
+      birthday: birthday ? new Date(birthday) : undefined,
       ...(role === "mechanic" && {
         rawAddress: address,
         address: geoData.formatted_address,
-        experience,
-        skills,
-        workingHours,
         location: {
           type: 'Point',
           coordinates: [geoData.location.lng, geoData.location.lat],
@@ -45,11 +47,31 @@ exports.register = async (req, res) => {
     });
 
     await newUser.save();
-    res.status(201).json({ message: 'Đăng ký thành công!', user: newUser });
+
+    // Nếu là thợ thì tạo record trong bảng Mechanic
+    let mechanic = null;
+    if (role === "mechanic") {
+      mechanic = new Mechanic({
+        userId: newUser._id,
+        skills,
+        experienceYears: experience || 0,
+        availability: true,
+      });
+      await mechanic.save();
+    }
+
+    res.status(201).json({ 
+      message: 'Đăng ký thành công!', 
+      user: newUser,
+      mechanic
+    });
+
   } catch (err) {
+    console.error("Register error:", err);
     res.status(500).json({ message: err.message || 'Server error' });
   }
 };
+
 
 // ================= LOGIN =================
 exports.login = async (req, res) => {

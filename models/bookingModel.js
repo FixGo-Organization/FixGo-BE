@@ -16,7 +16,6 @@ const bookingSchema = new mongoose.Schema(
         },
         scheduledAt: { type: Date },
         completedAt: { type: Date },
-        price: { type: Number, default: 0 },
     },
     { timestamps: true }
 );

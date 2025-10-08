@@ -1,4 +1,4 @@
-const Membership = require("../models/membershipModel");
+const Membership = require("../models/membershipPackageModel");
 
 exports.createMembership = async (req, res) => {
   try {

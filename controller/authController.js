@@ -1,6 +1,7 @@
 
 const User = require('../models/userModel');
 const Mechanic = require('../models/mechanicModel');
+const Mechanic = require('../models/mechanicModel');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { geocodeAddress } = require('../utils/geocode');
@@ -13,9 +14,11 @@ exports.register = async (req, res) => {
       experience, skills, workingHours, birthday 
     } = req.body;
 
+    // Kiểm tra email đã tồn tại
     const exist = await User.findOne({ email });
-    if (exist) return res.status(400).json({ message: 'Email đã tồn tại!' });
+    if (exist) return res.status(400).json({ message: "Email đã tồn tại!" });
 
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
     let geoData = null;
@@ -36,6 +39,7 @@ exports.register = async (req, res) => {
       password: hashedPassword,
       role,
       birthday: birthday ? new Date(birthday) : undefined,
+      birthday: birthday ? new Date(birthday) : undefined,
       ...(role === "mechanic" && {
         rawAddress: address,
         address: geoData.formatted_address,
@@ -45,6 +49,25 @@ exports.register = async (req, res) => {
         },
       }),
     });
+
+    // Nếu là mechanic, lấy geo và tạo document Mechanic
+    if (role === "mechanic") {
+      if (!address) return res.status(400).json({ message: "Cần địa chỉ để đăng ký thợ" });
+
+      let geoData;
+      try {
+        geoData = await geocodeAddress(address);
+      } catch (err) {
+        console.error("Geocode error:", err?.message || err);
+        return res.status(400).json({ message: "Địa chỉ không hợp lệ" });
+      }
+
+      newUser.address = geoData.formatted_address;
+      newUser.location = {
+        type: "Point",
+        coordinates: [geoData.location.lng, geoData.location.lat],
+      };
+    }
 
     await newUser.save();
 
@@ -101,12 +124,12 @@ exports.login = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        phone: user.phone || "",       
-        birthday: user.birthday || "",  
-        language: user.language || "Việt Nam", 
+        phone: user.phone || "",
+        birthday: user.birthday || "",
+        language: user.language || "Việt Nam",
         role: user.role,
         avatar: user.avatar || "",
-        rating: user.rating || 0,        
+        rating: user.rating || 0,
       },
     });
   } catch (err) {

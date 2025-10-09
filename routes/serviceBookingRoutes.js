@@ -5,7 +5,16 @@ const serviceBookingController = require('../controller/bookingController');
 router.post('/create', serviceBookingController.createBooking);
 router.get('/mechanics', serviceBookingController.getNearbyMechanics);
 router.post('/assign', serviceBookingController.assignMechanic);
+router.post('/assignMechanic', serviceBookingController.requestSpecificMechanic);
+router.post('/reject', serviceBookingController.rejectMechanic);
+router.post('/rejectMechanic', serviceBookingController.mechanicRejectBooking);
+
 router.post('/status', serviceBookingController.updateStatus);
 router.get('/all', serviceBookingController.getAllBookings);
+router.get('/mechanic/:mechanicId', serviceBookingController.getMechanicBookings);
+
+router.get("/bookings",serviceBookingController.getBookings);
+router.patch("/:id/status", serviceBookingController.updateBookingStatus);
+// router.post("/feedback", serviceBookingController.submitFeedback);
 
 module.exports = router;

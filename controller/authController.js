@@ -1,7 +1,6 @@
 
 const User = require('../models/userModel');
 const Mechanic = require('../models/mechanicModel');
-const Mechanic = require('../models/mechanicModel');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { geocodeAddress } = require('../utils/geocode');

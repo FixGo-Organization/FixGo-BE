@@ -98,8 +98,9 @@ mongoose
   .then(() => {
     console.log('✔ MongoDB connected');
     const PORT = process.env.PORT || 5000;
-    server.listen(PORT, () => {
-      console.log(`Server running on http://192.168.106.184:${PORT}`);
+    const IP = '0.0.0.0'
+    server.listen(PORT, IP, () => {
+      console.log(`Server running on http://${IP}:${PORT}`);
       console.log(`Socket.IO ready for connections`);
     });
   })

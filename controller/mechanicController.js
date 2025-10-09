@@ -90,7 +90,7 @@ exports.updateLocation = async (req, res) => {
 // Lấy mechanic theo id (có kèm user info)
 exports.getMechanicById = async (req, res) => {
   try {
-    const mechanic = await Mechanic.findById(req.params.id).populate("userId");
+    const mechanic = await Mechanic.findOne(req.params.userId).populate("userId");
     if (!mechanic) return res.status(404).json({ error: 'Mechanic not found' });
     res.json(mechanic);
   } catch (err) {

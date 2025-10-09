@@ -523,6 +523,122 @@ exports.updateBookingStatus = async (req, res) => {
   }
 };
 
+exports.createSpecificBooking = async (req, res) => {
+    try {
+        const { customerId, mechanicId, location, description, status } = req.body;
+
+        // SỬA LỖI 1: Dùng đúng tên model "ServiceBooking"
+        const newBooking = new ServiceBooking({
+            customerId,
+            mechanicId,
+            location,
+            description,
+            status,
+        });
+        await newBooking.save();
+
+        // SỬA LỖI 2: Dùng trực tiếp `mechanicId` vì nó chính là `userId`
+        const mechanicUserId = mechanicId; 
+        
+        const io = req.app.get('io');
+        const socketUserMap = req.app.get('socketUserMap');
+        const mechanicSocketId = socketUserMap[mechanicUserId];
+
+        if (mechanicSocketId) {
+            console.log(`Sending new_booking_request to mechanic (user: ${mechanicUserId}) via socket ${mechanicSocketId}`);
+            io.to(mechanicSocketId).emit('new_booking_request', newBooking);
+        } else {
+            console.log(`Mechanic (user: ${mechanicUserId}) is not connected via socket.`);
+        }
+
+        res.status(201).json(newBooking);
+
+    } catch (error) {
+        console.error("Error in createSpecificBooking:", error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.createEmergencyBooking = async (req, res) => {
+    try {
+        const { customerId, location, description, status } = req.body;
+
+        // SỬA LỖI 1: Dùng đúng tên model "ServiceBooking"
+        const newBooking = new ServiceBooking({
+            customerId,
+            location,
+            description,
+            status,
+        });
+        await newBooking.save();
+
+        const io = req.app.get('io');
+        const socketUserMap = req.app.get('socketUserMap');
+        const [lng, lat] = location.coordinates;
+
+        // Tìm các User là thợ ở gần
+        const nearbyUsers = await User.find({
+            role: 'mechanic',
+            location: {
+                $nearSphere: {
+                    $geometry: { type: "Point", coordinates: [lng, lat] },
+                    $maxDistance: 10000 // 10km
+                }
+            }
+        }).select('_id');
+
+        const nearbyUserIds = nearbyUsers.map(user => user._id);
+
+        // Lọc ra những thợ đang online
+        const onlineMechanics = await Mechanic.find({
+            userId: { $in: nearbyUserIds },
+            availability: true
+        }).select('userId');
+
+        const onlineMechanicUserIds = onlineMechanics.map(mec => mec.userId.toString());
+
+        console.log(`Found ${onlineMechanicUserIds.length} online mechanics nearby. Broadcasting...`);
+        onlineMechanicUserIds.forEach(mechanicUserId => {
+            const mechanicSocketId = socketUserMap[mechanicUserId];
+            if (mechanicSocketId) {
+                io.to(mechanicSocketId).emit('new_emergency_request', newBooking);
+            }
+        });
+
+        res.status(201).json(newBooking);
+
+    } catch (error) {
+        console.error("Error in createEmergencyBooking:", error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.getBookingById = async (req, res) => {
+    try {
+        const { bookingId } = req.params; // Lấy ID từ URL
+
+        // Tìm booking bằng ID và populate thông tin của customer và mechanic
+        const booking = await ServiceBooking.findById(bookingId)
+            .populate('customerId', 'name avatar phone') // Lấy các trường cần thiết của customer
+            .populate({
+                path: 'mechanicId',
+                select: 'name avatar phone location', // Lấy các trường cần thiết của mechanic (là User)
+            });
+
+        // Nếu không tìm thấy booking, trả về lỗi 404
+        if (!booking) {
+            return res.status(404).json({ message: 'Không tìm thấy booking.' });
+        }
+        
+        // Trả về dữ liệu booking đã tìm thấy
+        res.status(200).json(booking);
+
+    } catch (error) {
+        console.error("Lỗi khi lấy chi tiết booking:", error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
 // // Thợ gửi feedback / rating cho khách
 // exports.submitFeedback = async (req, res) => {
 //   try {
@@ -573,4 +689,5 @@ function mapStatus(status) {
       return "Từ chối";
     default:
       return status;
-}};
+  }
+};

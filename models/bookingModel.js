@@ -13,8 +13,8 @@ const bookingSchema = new mongoose.Schema(
         description: { type: String, required: false }, // Add description field
         status: {
             type: String,
-            enum: ['đang chờ', 'đã nhận', 'đang di chuyển', 'đang sửa', 'hoàn thành', 'hủy'],
-            default: 'đang chờ'
+            enum: ['chờ thợ', 'đang xử lý', 'hoàn thành', 'hủy'],
+            default: 'chờ thợ'
         },
         vehicleInfo: {
             type: String, 

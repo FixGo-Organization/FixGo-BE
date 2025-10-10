@@ -78,7 +78,7 @@ exports.getNearbyMechanics = async (req, res) => {
     // Use geospatial query (requires 2dsphere index on User.location)
     const mechanics = await User.find({
       role: 'mechanic',
-      // status: 'online',
+      status: 'online',
       location: {
         $nearSphere: {
           $geometry: { type: 'Point', coordinates: [lngNum, latNum] },

@@ -7,7 +7,7 @@ exports.getAllMechanics = async (req, res) => {
         const { availability, latitude, longitude } = req.query;
         if (!latitude || !longitude) {
             return res.status(400).json({ message: "Latitude and longitude are required" });
-        }
+        }   
         const lat = parseFloat(latitude);
         const lng = parseFloat(longitude);
 

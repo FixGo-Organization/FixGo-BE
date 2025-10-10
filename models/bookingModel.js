@@ -2,22 +2,20 @@ const mongoose = require('mongoose');
 const bookingSchema = new mongoose.Schema(
     {
         customerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-        mechanicId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: false, default: null }, // mechanics are stored in User
+        mechanicId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
         garageId: { type: mongoose.Schema.Types.ObjectId, ref: "Garage" },
         serviceId: { type: mongoose.Schema.Types.ObjectId, ref: "Service" },
         location: {
             type: { type: String, enum: ['Point'], default: 'Point' },
             coordinates: { type: [Number], required: true }, // [lng, lat]
-            address: { type: String, required: false } // Add address field
+            address: { type: String, required: false }
         },
-        description: { type: String, required: false }, // Add description field
+        description: { type: String, required: false },
+        vehicleInfo: { type: String },
         status: {
             type: String,
-            enum: ['chờ thợ', 'đang xử lý', 'hoàn thành', 'hủy'],
+            enum: ['chờ thợ', 'đang chờ', 'đã nhận', 'đang di chuyển', 'đang sửa', 'hoàn thành', 'hủy'],
             default: 'chờ thợ'
-        },
-        vehicleInfo: {
-            type: String, 
         },
         scheduledAt: { type: Date },
         completedAt: { type: Date },

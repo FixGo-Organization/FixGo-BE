@@ -7,7 +7,7 @@ const bookingSchema = new mongoose.Schema(
         serviceId: { type: mongoose.Schema.Types.ObjectId, ref: "Service" },
         location: {
             type: { type: String, enum: ['Point'], default: 'Point' },
-            coordinates: { type: [Number], required: true }, // [lng, lat]
+            coordinates: { type: [Number], required: true }, 
             address: { type: String, required: false }
         },
         description: { type: String, required: false },

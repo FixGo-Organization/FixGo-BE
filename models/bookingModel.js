@@ -14,8 +14,8 @@ const bookingSchema = new mongoose.Schema(
         vehicleInfo: { type: String },
         status: {
             type: String,
-            enum: ['chờ thợ', 'đang chờ', 'đã nhận', 'đang di chuyển', 'đang sửa', 'hoàn thành', 'hủy'],
-            default: 'chờ thợ'
+            enum: ['đang chờ', 'đã nhận', 'đang di chuyển', 'đang sửa', 'hoàn thành', 'hủy'],
+            default: 'đang chờ'
         },
         scheduledAt: { type: Date },
         completedAt: { type: Date },

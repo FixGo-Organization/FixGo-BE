@@ -11,7 +11,7 @@ const userSchema = new mongoose.Schema(
       enum: ["customer", "mechanic", "garageOwner", "garageEmployee", "admin"],
       default: "customer"
     },
-    online: { type: Boolean, default: false }, // online socket presence
+    online: { type: Boolean, default: false }, 
     avatar: { type: String, default: "" },
     birthday: { type: Date },
     language: { type: String, default: "Việt Nam" },

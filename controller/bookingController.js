@@ -118,10 +118,10 @@ exports.assignMechanic = async (req, res) => {
       console.log('>>> [DEBUG] failed to assign mechanic: ', mechanicId, 'to booking', bookingId, ' - booking not found');
       return res.status(404).json({ error: 'Booking not found' });
     }
-    if (booking.status != 'chờ thợ') {
+    if (booking.status != 'đang chờ') {
       console.log('>>> [DEBUG] failed to assign mechanic: ', mechanicId, 'to booking', bookingId, ' - invalid booking status:', booking.status);
       return res.status(400).json({
-        error: `Cannot assign mechanic. Booking status must be 'chờ thợ', current status is '${booking.status}'.`
+        error: `Cannot assign mechanic. Booking status must be 'đang chờ', current status is '${booking.status}'.`
       });
     }
 
@@ -204,7 +204,7 @@ exports.rejectMechanic = async (req, res) => {
 
     // reset mechanic
     booking.mechanicId = null;
-    booking.status = 'chờ thợ';
+    booking.status = 'đang chờ';
     await booking.save();
 
     // set mechanic available again
@@ -240,7 +240,7 @@ exports.mechanicRejectBooking = async (req, res) => {
     if (!booking) return res.status(404).json({ error: 'Booking not found' });
 
     // ensure status is still waiting
-    if (booking.status !== 'chờ thợ')
+    if (booking.status !== 'đang chờ')
       return res.status(400).json({ error: 'Cannot reject. Booking not waiting for mechanic.' });
 
     const io = req.app.get('io');
@@ -371,7 +371,7 @@ exports.getMechanicBookings = async (req, res) => {
     const bookings = await ServiceBooking.find({
       $or: [
         { mechanicId: mechanicId }, // bookings assigned to this mechanic
-        { status: 'chờ thợ' } // pending bookings that can be picked up
+        { status: 'đang chờ' } // pending bookings that can be picked up
       ]
     })
       .populate('customerId', 'name phone email avatar')
@@ -420,7 +420,7 @@ exports.getMechanicBookings = async (req, res) => {
 
     // Sort by distance (closest first) for pending bookings, or by date for assigned bookings
     const sortedBookings = bookingsWithDistance.sort((a, b) => {
-      if (a.status === 'chờ thợ' && b.status === 'chờ thợ') {
+      if (a.status === 'đang chờ' && b.status === 'đang chờ') {
         return (a.distanceKm || 999) - (b.distanceKm || 999); // closest first
       }
       return new Date(b.createdAt) - new Date(a.createdAt); // newest first

@@ -7,7 +7,7 @@ router.post('/create-emergency', serviceBookingController.createEmergencyBooking
 router.get('/mechanics', serviceBookingController.getNearbyMechanics);
 router.get('/:bookingId', serviceBookingController.getBookingById);
 router.post('/assign', serviceBookingController.assignMechanic);
-router.post('/assignMechanic', serviceBookingController.requestSpecificMechanic);
+// router.post('/assignMechanic', serviceBookingController.createSpecificBooking);
 router.post('/reject', serviceBookingController.rejectMechanic);
 router.post('/rejectMechanic', serviceBookingController.mechanicRejectBooking);
 

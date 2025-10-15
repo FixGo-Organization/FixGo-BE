@@ -51,7 +51,6 @@ io.on('connection', (socket) => {
 });
 
 app.set('io', io);
-app.set('socketUserMap', socketUserMap);
 
 // Middleware
 app.use(

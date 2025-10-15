@@ -80,7 +80,7 @@ async function seed() {
         mechanicId: mechanicProfiles[0]._id,
         serviceId: services[0]._id,
         location: { type: "Point", coordinates: [105.814444, 21.028511] },
-        status: "chờ thợ",
+        status: "đang chờ",
         scheduledAt: new Date(),
         price: 50000,
       },

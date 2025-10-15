@@ -110,7 +110,7 @@ exports.assignMechanic = async (req, res) => {
 };
 
 // customer directly requests a chosen mechanic
-eexports.updateStatus = async (req, res) => {
+exports.updateStatus = async (req, res) => {
   try {
     const { bookingId, status } = req.body;
     // ... (phần validate giữ nguyên)

@@ -5,44 +5,66 @@ const Mechanic = require('../models/mechanicModel');
 // utility: lấy io và socketMap từ app
 const getIoAndMap = (req) => {
   const io = req.app.get('io');
-  return { io };
+  const socketUserMap = req.app.get('socketUserMap'); // { userId: socketId }
+  return { io, socketUserMap };
 };
 
 // Tạo yêu cầu sửa xe và thông báo cho thợ gần đó
 exports.createBooking = async (req, res) => {
   try {
+    // lấy customerId từ req.userId nếu dùng auth; fallback về req.body.customerId
     const customerId = req.userId || req.body.customerId;
     if (!customerId) return res.status(400).json({ error: 'customerId is required' });
 
-    const booking = await ServiceBooking.create({ ...req.body, customerId });
+    // validate location
+    const { location } = req.body;
+    if (!location || !Array.isArray(location.coordinates) || location.coordinates.length !== 2)
+      return res.status(400).json({ error: 'location.coordinates [lng, lat] required' });
 
-    const maxDistance = req.body.notifyDistanceMeters || 1000;
+    // tạo booking mới
+    const bookingData = {
+      ...req.body,
+      customerId,
+      location
+    };
+    const booking = await ServiceBooking.create(bookingData);
+
+    // tìm các thợ gần vị trí customer (1km)
+    const maxDistance = req.body.notifyDistanceMeters ? Number(req.body.notifyDistanceMeters) : 1000;
     const [lng, lat] = booking.location.coordinates;
 
+    // tìm users có role mechanic, có location, và Mechanic.availability join simple:
+    // filter User.role === 'mechanic' and location near
     const nearbyMechanics = await User.find({
       role: "mechanic",
+      "location.coordinates": { $exists: true },
       location: {
         $nearSphere: {
           $geometry: { type: "Point", coordinates: [lng, lat] },
           $maxDistance: maxDistance,
         },
       },
-    }).select('_id'); // Chỉ cần lấy ID
+    }).select('_id name phone location online');
 
-    const io = req.app.get('io');
-    if (nearbyMechanics.length > 0) {
-      // ✨ REFACTOR: Gửi thông báo đến tất cả thợ gần đó trong 1 lần
-      const mechanicIds = nearbyMechanics.map(m => m._id.toString());
-      notifyUser(io, mechanicIds, 'new_booking', { booking });
-    }
+    // emit tới từng mechanic (nếu có socket map)
+    const { io, socketUserMap } = getIoAndMap(req);
+    nearbyMechanics.forEach(m => {
+      const socketId = socketUserMap && socketUserMap[m._id.toString()];
+      const payload = { booking, mechanicId: m._id };
+      if (socketId && io) {
+        io.to(socketId).emit('new_booking', payload);
+      }
+    });
+
+    // fallback broadcast small info (optional)
+    if (io) io.emit('booking_created', { bookingId: booking._id });
 
     res.status(201).json(booking);
   } catch (err) {
-    console.error("❌ Error creating booking:", err);
+    console.error("❌ Error creating booking:", err.response?.data || err.message);
     res.status(500).json({ error: err.message });
   }
 };
-
 
 // Lấy danh sách thợ gần đó
 exports.getNearbyMechanics = async (req, res) => {
@@ -75,34 +97,65 @@ exports.getNearbyMechanics = async (req, res) => {
 exports.assignMechanic = async (req, res) => {
   try {
     const { bookingId, mechanicId } = req.body;
-    // ... (phần validate giữ nguyên)
+    if (!bookingId || !mechanicId)
+      return res.status(400).json({ error: 'bookingId and mechanicId required' });
+
+    console.log('>>> [DEBUG] attempting to assign mechanic', mechanicId, 'to booking', bookingId);
+
+    // 1. validate mechanic existence + availability
     const mechanic = await Mechanic.findOne({ userId: mechanicId });
-    if (!mechanic || !mechanic.availability) return res.status(400).json({ error: 'Mechanic not found or not available' });
-
+    if (!mechanic) {
+      console.log('>>> [DEBUG] failed to assign mechanic: ', mechanicId, 'to booking', bookingId, ' - mechanic not found');
+      return res.status(404).json({ error: 'Mechanic not found' });
+    }
+    if (mechanic.availability === false) {
+      console.log('>>> [DEBUG] failed to assign mechanic: ', mechanicId, 'to booking', bookingId, ' - mechanic not available');
+      return res.status(400).json({ error: 'Mechanic is not available' });
+    }
+    // 2. validate booking existence + status
     const booking = await ServiceBooking.findById(bookingId);
-    if (!booking || booking.status !== 'đang chờ') return res.status(400).json({ error: 'Booking not found or cannot be assigned' });
+    if (!booking) {
+      console.log('>>> [DEBUG] failed to assign mechanic: ', mechanicId, 'to booking', bookingId, ' - booking not found');
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+    if (booking.status != 'đang chờ') {
+      console.log('>>> [DEBUG] failed to assign mechanic: ', mechanicId, 'to booking', bookingId, ' - invalid booking status:', booking.status);
+      return res.status(400).json({
+        error: `Cannot assign mechanic. Booking status must be 'đang chờ', current status is '${booking.status}'.`
+      });
+    }
 
+    // 3. update booking with mechanicId + change status to 'đã nhận'
     const updatedBooking = await ServiceBooking.findByIdAndUpdate(
       bookingId,
       { mechanicId, status: 'đã nhận' },
       { new: true }
-    ).populate('customerId mechanicId');
+    ).populate('customerId mechanicId serviceId');
 
+    // 4. update mechanic availability to false (busy)
     const updatedMechanic = await Mechanic.findOneAndUpdate(
       { userId: mechanicId },
       { availability: false },
       { new: true }
     );
 
-    // ✨ REFACTOR: Gửi thông báo bằng hàm tiện ích
+    // 5. notify users via socket
     const io = req.app.get('io');
-    notifyUser(io, mechanicId, 'booking_assigned', { booking: updatedBooking });
-    notifyUser(io, booking.customerId.toString(), 'your_booking_updated', { booking: updatedBooking });
+    const socketUserMap = req.app.get('socketUserMap');
+    if (io && socketUserMap) {
+      const mechSocket = socketUserMap[mechanicId];
+      const custSocket = socketUserMap[booking.customerId.toString()];
+      if (mechSocket) io.to(mechSocket).emit('booking_assigned', { booking: updatedBooking });
+      if (custSocket) io.to(custSocket).emit('your_booking_updated', { booking: updatedBooking });
+    }
 
+    // 6. return booking + mechanic status
+    console.log('>>> [DEBUG] successfully assigned mechanic', mechanicId, 'to booking', bookingId);
     res.json({
       booking: updatedBooking,
-      availability: updatedMechanic?.availability,
+      availability: updatedMechanic?.availability ?? null
     });
+
   } catch (err) {
     console.error('Error assigning mechanic:', err);
     res.status(400).json({ error: err.message });
@@ -110,43 +163,31 @@ exports.assignMechanic = async (req, res) => {
 };
 
 // customer directly requests a chosen mechanic
-exports.updateStatus = async (req, res) => {
+exports.requestSpecificMechanic = async (req, res) => {
   try {
-    const { bookingId, status } = req.body;
-    // ... (phần validate giữ nguyên)
+    const { bookingId, mechanicId } = req.body;
+    if (!bookingId || !mechanicId)
+      return res.status(400).json({ error: 'bookingId and mechanicId required' });
+
     const booking = await ServiceBooking.findById(bookingId);
-    if (!booking || ['hoàn thành', 'hủy'].includes(booking.status)) return res.status(400).json({ error: 'Booking state cannot be updated.' });
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
 
-    const updatedBooking = await ServiceBooking.findByIdAndUpdate(
-      bookingId,
-      { status, completedAt: status === 'hoàn thành' ? new Date() : undefined },
-      { new: true }
-    ).populate('customerId mechanicId');
+    // attach temporarily for reference
+    booking.preferredMechanicId = mechanicId;
+    await booking.save();
 
-    let updatedMechanic = null;
-    if (status === 'hoàn thành' && updatedBooking.mechanicId) {
-      updatedMechanic = await Mechanic.findOneAndUpdate(
-        { userId: updatedBooking.mechanicId._id },
-        { availability: true },
-        { new: true }
-      );
-    }
-
-    // ✨ REFACTOR: Gửi thông báo trạng thái mới
+    // notify that mechanic
     const io = req.app.get('io');
-    const customerId = updatedBooking.customerId._id.toString();
-    const mechanicId = updatedBooking.mechanicId?._id.toString();
-
-    notifyUser(io, customerId, 'booking_status_updated', { booking: updatedBooking });
-    if (mechanicId) {
-      notifyUser(io, mechanicId, 'booking_status_updated', { booking: updatedBooking });
+    const socketUserMap = req.app.get('socketUserMap');
+    if (io && socketUserMap) {
+      const mechSocket = socketUserMap[mechanicId];
+      if (mechSocket)
+        io.to(mechSocket).emit('direct_booking_request', { booking });
     }
 
-    res.json({
-      booking: updatedBooking,
-      availability: updatedMechanic?.availability,
-    });
+    res.json({ message: 'Booking sent to chosen mechanic', booking });
   } catch (err) {
+    console.error('Error requesting specific mechanic:', err);
     res.status(400).json({ error: err.message });
   }
 };
@@ -171,9 +212,10 @@ exports.rejectMechanic = async (req, res) => {
 
     // notify both sides
     const io = req.app.get('io');
-    if (io) {
-      const mechSocket = io.sockets.sockets.get(mechanicId);
-      const custSocket = io.sockets.sockets.get(booking.customerId.toString());
+    const socketUserMap = req.app.get('socketUserMap');
+    if (io && socketUserMap) {
+      const mechSocket = socketUserMap[mechanicId];
+      const custSocket = socketUserMap[booking.customerId.toString()];
       if (mechSocket)
         io.to(mechSocket).emit('booking_rejected_by_customer', { bookingId });
       if (custSocket)
@@ -190,19 +232,28 @@ exports.rejectMechanic = async (req, res) => {
 // mechanic rejects booking
 exports.mechanicRejectBooking = async (req, res) => {
   try {
-    const { bookingId } = req.body;
-    const booking = await ServiceBooking.findById(bookingId);
-    if (!booking || booking.status !== 'đang chờ') return res.status(400).json({ error: 'Cannot reject this booking.' });
+    const { bookingId, mechanicId } = req.body;
+    if (!bookingId || !mechanicId)
+      return res.status(400).json({ error: 'bookingId and mechanicId required' });
 
-    // ✨ REFACTOR: Gửi thông báo cho khách hàng
+    const booking = await ServiceBooking.findById(bookingId);
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+    // ensure status is still waiting
+    if (booking.status !== 'đang chờ')
+      return res.status(400).json({ error: 'Cannot reject. Booking not waiting for mechanic.' });
+
     const io = req.app.get('io');
-    notifyUser(io, booking.customerId.toString(), 'booking_rejected_by_mechanic', {
-      bookingId,
-      mechanicId: req.body.mechanicId
-    });
+    const socketUserMap = req.app.get('socketUserMap');
+    if (io && socketUserMap) {
+      const custSocket = socketUserMap[booking.customerId.toString()];
+      if (custSocket)
+        io.to(custSocket).emit('booking_rejected_by_mechanic', { bookingId, mechanicId });
+    }
 
     res.json({ message: 'Mechanic rejected booking successfully' });
   } catch (err) {
+    console.error('Error mechanic rejecting booking:', err);
     res.status(400).json({ error: err.message });
   }
 };
@@ -259,6 +310,7 @@ exports.updateStatus = async (req, res) => {
 
     // 6. emit live update to both customer and mechanic
     const io = req.app.get('io');
+    const socketUserMap = req.app.get('socketUserMap');
 
     console.log("🔹 socketUserMap:", socketUserMap);
     console.log("🔹 Customer socket ID:", updatedBooking.customerId._id.toString(), "=>", socketUserMap[updatedBooking.customerId._id.toString()]);
@@ -472,117 +524,119 @@ exports.updateBookingStatus = async (req, res) => {
 };
 
 exports.createSpecificBooking = async (req, res) => {
-  try {
-    const { customerId, mechanicId, location, description, status } = req.body;
+    try {
+        const { customerId, mechanicId, location, description, status } = req.body;
 
-    // SỬA LỖI 1: Dùng đúng tên model "ServiceBooking"
-    const newBooking = new ServiceBooking({
-      customerId,
-      mechanicId,
-      location,
-      description,
-      status,
-    });
-    await newBooking.save();
+        // SỬA LỖI 1: Dùng đúng tên model "ServiceBooking"
+        const newBooking = new ServiceBooking({
+            customerId,
+            mechanicId,
+            location,
+            description,
+            status,
+        });
+        await newBooking.save();
 
-    // SỬA LỖI 2: Dùng trực tiếp `mechanicId` vì nó chính là `userId`
-    const mechanicUserId = mechanicId;
+        // SỬA LỖI 2: Dùng trực tiếp `mechanicId` vì nó chính là `userId`
+        const mechanicUserId = mechanicId; 
+        
+        const io = req.app.get('io');
+        const socketUserMap = req.app.get('socketUserMap');
+        const mechanicSocketId = socketUserMap[mechanicUserId];
 
-    const io = req.app.get('io');
-    const mechanicSocketId = socketUserMap[mechanicUserId];
+        if (mechanicSocketId) {
+            console.log(`Sending new_booking_request to mechanic (user: ${mechanicUserId}) via socket ${mechanicSocketId}`);
+            io.to(mechanicSocketId).emit('new_booking_request', newBooking);
+        } else {
+            console.log(`Mechanic (user: ${mechanicUserId}) is not connected via socket.`);
+        }
 
-    if (mechanicSocketId) {
-      console.log(`Sending new_booking_request to mechanic (user: ${mechanicUserId}) via socket ${mechanicSocketId}`);
-      io.to(mechanicSocketId).emit('new_booking_request', newBooking);
-    } else {
-      console.log(`Mechanic (user: ${mechanicUserId}) is not connected via socket.`);
+        res.status(201).json(newBooking);
+
+    } catch (error) {
+        console.error("Error in createSpecificBooking:", error);
+        res.status(500).json({ error: error.message });
     }
-
-    res.status(201).json(newBooking);
-
-  } catch (error) {
-    console.error("Error in createSpecificBooking:", error);
-    res.status(500).json({ error: error.message });
-  }
 };
 
 exports.createEmergencyBooking = async (req, res) => {
-  try {
-    const { customerId, location, description, status } = req.body;
+    try {
+        const { customerId, location, description, status } = req.body;
 
-    // SỬA LỖI 1: Dùng đúng tên model "ServiceBooking"
-    const newBooking = new ServiceBooking({
-      customerId,
-      location,
-      description,
-      status,
-    });
-    await newBooking.save();
+        // SỬA LỖI 1: Dùng đúng tên model "ServiceBooking"
+        const newBooking = new ServiceBooking({
+            customerId,
+            location,
+            description,
+            status,
+        });
+        await newBooking.save();
 
-    const io = req.app.get('io');
-    const [lng, lat] = location.coordinates;
+        const io = req.app.get('io');
+        const socketUserMap = req.app.get('socketUserMap');
+        const [lng, lat] = location.coordinates;
 
-    // Tìm các User là thợ ở gần
-    const nearbyUsers = await User.find({
-      role: 'mechanic',
-      location: {
-        $nearSphere: {
-          $geometry: { type: "Point", coordinates: [lng, lat] },
-          $maxDistance: 10000 // 10km
-        }
-      }
-    }).select('_id');
+        // Tìm các User là thợ ở gần
+        const nearbyUsers = await User.find({
+            role: 'mechanic',
+            location: {
+                $nearSphere: {
+                    $geometry: { type: "Point", coordinates: [lng, lat] },
+                    $maxDistance: 10000 // 10km
+                }
+            }
+        }).select('_id');
 
-    const nearbyUserIds = nearbyUsers.map(user => user._id);
+        const nearbyUserIds = nearbyUsers.map(user => user._id);
 
-    // Lọc ra những thợ đang online
-    const onlineMechanics = await Mechanic.find({
-      userId: { $in: nearbyUserIds },
-      availability: true
-    }).select('userId');
+        // Lọc ra những thợ đang online
+        const onlineMechanics = await Mechanic.find({
+            userId: { $in: nearbyUserIds },
+            availability: true
+        }).select('userId');
 
-    const onlineMechanicUserIds = onlineMechanics.map(mec => mec.userId.toString());
+        const onlineMechanicUserIds = onlineMechanics.map(mec => mec.userId.toString());
 
-    console.log(`Found ${onlineMechanicUserIds.length} online mechanics nearby. Broadcasting...`);
-    onlineMechanicUserIds.forEach(mechanicUserId => {
-      const mechanicSocketId = socketUserMap[mechanicUserId];
-      if (mechanicSocketId) {
-        io.to(mechanicSocketId).emit('new_emergency_request', newBooking);
-      }
-    });
+        console.log(`Found ${onlineMechanicUserIds.length} online mechanics nearby. Broadcasting...`);
+        onlineMechanicUserIds.forEach(mechanicUserId => {
+            const mechanicSocketId = socketUserMap[mechanicUserId];
+            if (mechanicSocketId) {
+                io.to(mechanicSocketId).emit('new_emergency_request', newBooking);
+            }
+        });
 
-    res.status(201).json(newBooking);
+        res.status(201).json(newBooking);
 
-  } catch (error) {
-    console.error("Error in createEmergencyBooking:", error);
-    res.status(500).json({ error: error.message });
-  }
+    } catch (error) {
+        console.error("Error in createEmergencyBooking:", error);
+        res.status(500).json({ error: error.message });
+    }
 };
 
 exports.getBookingById = async (req, res) => {
-  try {
-    const { bookingId } = req.params; // Lấy ID từ URL
+    try {
+        const { bookingId } = req.params; // Lấy ID từ URL
 
-    // Tìm booking bằng ID và populate thông tin của customer và mechanic
-    const booking = await ServiceBooking.findById(bookingId)
-      .populate('customerId', 'name avatar phone') // Lấy các trường cần thiết của customer
-      .populate({
-        path: 'mechanicId',
-        select: 'name avatar phone location', // Lấy các trường cần thiết của mechanic (là User)
-      });
+        // Tìm booking bằng ID và populate thông tin của customer và mechanic
+        const booking = await ServiceBooking.findById(bookingId)
+            .populate('customerId', 'name avatar phone') // Lấy các trường cần thiết của customer
+            .populate({
+                path: 'mechanicId',
+                select: 'name avatar phone location', // Lấy các trường cần thiết của mechanic (là User)
+            });
 
-    // Nếu không tìm thấy booking, trả về lỗi 404
-    if (!booking) {
-      return res.status(404).json({ message: 'Không tìm thấy booking.' });
+        // Nếu không tìm thấy booking, trả về lỗi 404
+        if (!booking) {
+            return res.status(404).json({ message: 'Không tìm thấy booking.' });
+        }
+        
+        // Trả về dữ liệu booking đã tìm thấy
+        res.status(200).json(booking);
+
+    } catch (error) {
+        console.error("Lỗi khi lấy chi tiết booking:", error);
+        res.status(500).json({ error: error.message });
     }
-
-    // Trả về dữ liệu booking đã tìm thấy
-    res.status(200).json(booking);
-
-  } catch (error) {
-    console.error("Lỗi khi lấy chi tiết booking:", error);
-    res.status(500).json({ error: error.message });
-  }
 };
 
 // // Thợ gửi feedback / rating cho khách

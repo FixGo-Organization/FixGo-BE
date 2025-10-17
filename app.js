@@ -35,22 +35,34 @@ const io = socketIo(server, {
 });
 
 // Store socket connections: { userId: socketId }
+const socketUserMap = {};
+
+// Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  // User đăng ký bằng cách tham gia vào room của chính họ
+  // User registers their ID
   socket.on('register', (userId) => {
-    socket.join(userId); // << Chỉ cần dòng này
-    console.log(`User ${userId} joined room with socket ${socket.id}`);
+    socketUserMap[userId] = socket.id;
+    console.log(`User ${userId} registered with socket ${socket.id}`);
   });
 
-  // Socket.IO tự động xử lý việc rời phòng khi disconnect, không cần code thêm
+  // Handle disconnection
   socket.on('disconnect', () => {
-    console.log(`Socket ${socket.id} disconnected`);
+    // Remove user from socketUserMap
+    for (const [userId, socketId] of Object.entries(socketUserMap)) {
+      if (socketId === socket.id) {
+        delete socketUserMap[userId];
+        console.log(`User ${userId} disconnected`);
+        break;
+      }
+    }
   });
 });
 
+// Make io and socketUserMap available to routes
 app.set('io', io);
+app.set('socketUserMap', socketUserMap);
 
 // Middleware
 app.use(
@@ -78,7 +90,7 @@ app.use('/api/garages', garageRoutes);
 app.use('/api/memberships', membershipRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/chats', chatRoutes);
-app.use('/api/profile', profileRoutes)
+app.use('/api/profile',profileRoutes)
 
 // connect DB
 mongoose

@@ -6,6 +6,7 @@ const socketIo = require('socket.io');
 require('dotenv').config();
 
 const authRoutes = require('./routes/authRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
 const mechanicRoutes = require('./routes/mechanicRoutes');
 const customerRoutes = require('./routes/customerRoutes');
 const serviceRoutes = require('./routes/serviceRoutes');
@@ -29,7 +30,7 @@ const io = socketIo(server, {
       "http://192.168.106.184:8081",
       "http://localhost:3000"
     ],
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true
   }
 });
@@ -71,15 +72,23 @@ app.use(
       process.env.CLIENT_URL,
       process.env.EXPO_CLIENT_URL,
       "http://192.168.106.184:8081",
-      "http://localhost:3000"
+      "http://localhost:3000",
+      "http://localhost:3001",
     ],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true,
   })
 );
 app.use(express.json());
-
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  next();
+});
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', dashboardRoutes);
 app.use('/api/mechanics', mechanicRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/services', serviceRoutes);
@@ -90,7 +99,7 @@ app.use('/api/garages', garageRoutes);
 app.use('/api/memberships', membershipRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/chats', chatRoutes);
-app.use('/api/profile',profileRoutes)
+app.use('/api/profile', profileRoutes)
 
 // connect DB
 mongoose

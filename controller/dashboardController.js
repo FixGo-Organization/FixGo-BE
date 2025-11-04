@@ -1,6 +1,6 @@
-const User = require("../models/User");
-const Booking = require("../models/Booking");
-const Service = require("../models/Service"); // nếu có bảng Service chứa giá
+const User = require("../models/userModel");
+const Booking = require("../models/bookingModel");
+const Service = require("../models/serviceModel"); // nếu có bảng Service chứa giá
 
 // ✅ 1. Tổng hợp số liệu dashboard
 exports.getDashboardStats = async (req, res) => {

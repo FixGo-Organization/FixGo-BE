@@ -1,5 +1,5 @@
 const express = require("express");
-const { getDashboardStats, getAllBookings, getRevenue } = require("../controllers/dashboardController");
+const { getDashboardStats, getAllBookings, getRevenue } = require("../controller/dashboardController");
 const router = express.Router();
 
 router.get("/", getDashboardStats);
